@@ -1,12 +1,10 @@
 import os
 from threading import Thread
 from flask import Flask
-import asyncio
 import sqlite3
 import logging
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 app = Flask('')
 
@@ -108,7 +106,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         user_id = update.effective_user.id
         if user_id != ADMIN_ID:
-            await update.message.reply_text("⛔️️ عفواً، هذا البوت خاص بمسؤول محدد فقط.")
+            await update.message.reply_text("⛔ عفواً، هذا البوت خاص بمسؤول محدد فقط.")
             return
 
         msg = (
@@ -118,17 +116,6 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(msg, parse_mode="Markdown", reply_markup=main_keyboard())
     except Exception as e:
         logger.error(f"خطأ في أمر البداية: {e}")
-
-# دالة الإشعار التلقائي المتوافقة مع AsyncIOScheduler
-async def send_periodic_alert(bot_instance):
-    try:
-        await bot_instance.send_message(
-            chat_id=ADMIN_ID,
-            text="🔔 **تنبيه تلقائي:** البوت يعمل بكفاءة تامة على السيرفر ويراقب المواعيد لك بدون توقف! ✅"
-        )
-        log_event("تم إرسال إشعار تلقائي دوري بنجاح.")
-    except Exception as e:
-        logger.error(f"خطأ في إرسال الإشعار التلقائي الدوري: {e}")
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
@@ -164,7 +151,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif data == "act_start":
             log_event("تم تشغيل مراقبة المواعيد.")
             await query.edit_message_text(
-                "🟢 **تم تشغيل المراقبة بنجاح!**\nالبوت يبحث الآن في الخلفية عن أي مواعيد جديدة.",
+                "🟢 **تم تشغيل المراقبة بنجاح!**\nالبوت يعمل الآن ومستعد لإرسال التنبيهات.",
                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 رجوع", callback_data="menu_back")]])
             )
 
@@ -185,7 +172,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text = (
                 "📊 **حالة النظام:**\n\n"
                 "• السيرفر: يعمل على Render ✅\n"
-                "• حالة الأخطاء: مستقرة ومحمية 🛡️\n"
+                "• حالة البوت: مستقر بدون أخطاء 🛡️\n"
                 "• الدول المدعومة: 7 دول\n"
                 "• المسؤول: Yassine"
             )
@@ -223,22 +210,15 @@ def main():
     init_db()
     log_event("بدء تشغيل البوت الرئيسي.")
     
-    # بناء تطبيق البوت
     app = Application.builder().token(BOT_TOKEN).build()
 
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(CallbackQueryHandler(button_handler))
 
-    # إعداد المجدول المتوافق مع AsyncIO للعمل بسلاسة داخل البوت
-    scheduler = AsyncIOScheduler()
-    scheduler.add_job(send_periodic_alert, 'interval', hours=1, args=[app.bot])
-    scheduler.start()
-
     print("========================================")
-    print(" Bot is running perfectly with Async Scheduler!")
+    print(" Bot is running perfectly and stable!")
     print("========================================")
     
-    # تشغيل البوت بالاعتماد على ميزة الـ Polling المدمجة مع معالجة الأخطاء الآمنة
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
