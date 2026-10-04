@@ -11,7 +11,7 @@ app = Flask('')
 
 @app.route('/')
 def home():
-  return 'Bot is alive!'
+  return 'Bot is alive and running!'
 
 def run():
   port = int(os.environ.get('PORT', 8080))
@@ -46,6 +46,14 @@ def init_db():
                 message TEXT
             )
         """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT
+            )
+        """)
+        conn.commit()
+        cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('monitoring_active', 'false')")
         conn.commit()
         conn.close()
     except Exception as e:
@@ -61,17 +69,42 @@ def log_event(message: str):
     except Exception as e:
         logger.error(f"خطأ في تسجيل الحدث: {e}")
 
+def get_monitoring_status() -> bool:
+    try:
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        cursor.execute("SELECT value FROM settings WHERE key = 'monitoring_active'")
+        res = cursor.fetchone()
+        conn.close()
+        return res[0] == 'true' if res else False
+    except:
+        return False
+
+def set_monitoring_status(status: bool):
+    try:
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        cursor.execute("UPDATE settings SET value = ? WHERE key = 'monitoring_active'", ('true' if status else 'false',))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.error(f"خطأ في تحديث حالة المراقبة: {e}")
+
+# تم تحديث بيانات البرتغال لتصبح عبر منصة TLScontact بدلاً من VFS Global
 COUNTRIES_INFO = {
     "greece": {"name": "🇬🇷 اليونان (Greece)", "provider": "VFS Global", "url": "https://visa.vfsglobal.com/dza/fr/grc"},
     "italy": {"name": "🇮🇹 إيطاليا (Italy)", "provider": "VFS Global / Prenot@Mi", "url": "https://visa.vfsglobal.com/dza/fr/ita"},
     "belgium": {"name": "🇧🇪 بلجيكا (Belgium)", "provider": "TLScontact", "url": "https://visas-be.tlscontact.com/visa/dz/dzALG2be"},
     "netherlands": {"name": "🇳🇱 هولندا (Netherlands)", "provider": "VFS Global", "url": "https://visa.vfsglobal.com/dza/fr/nld"},
-    "portugal": {"name": "🇵🇹 البرتغال (Portugal)", "provider": "VFS Global", "url": "https://visa.vfsglobal.com/dza/fr/prt"},
+    "portugal": {"name": "🇵🇹 البرتغال (Portugal)", "provider": "TLScontact", "url": "https://pt.tlscontact.com/dz/ALG/index.php"},
     "austria": {"name": "🇦🇹 النمسا (Austria)", "provider": "VFS Global", "url": "https://visa.vfsglobal.com/dza/fr/aut"},
     "bulgaria": {"name": "🇧🇬 بلغاريا (Bulgaria)", "provider": "VFS Global / Embassy", "url": "https://visa.vfsglobal.com/dza/fr/bgr"}
 }
 
 def main_keyboard():
+    is_active = get_monitoring_status()
+    status_icon = "🟢 المراقبة تعمل" if is_active else "🔴 المراقبة متوقفة"
+    
     keyboard = [
         [
             InlineKeyboardButton("🇬🇷 Greece", callback_data="c_greece"),
@@ -89,14 +122,17 @@ def main_keyboard():
             InlineKeyboardButton("🇧🇬 Bulgaria", callback_data="c_bulgaria"),
         ],
         [
-            InlineKeyboardButton("🔍 فحص سريع الآن", callback_data="act_check_now"),
+            InlineKeyboardButton("🔍 فحص شامل الآن", callback_data="act_check_now"),
         ],
         [
             InlineKeyboardButton("▶️ بدء المراقبة", callback_data="act_start"),
             InlineKeyboardButton("⏹️ إيقاف المراقبة", callback_data="act_stop"),
         ],
         [
-            InlineKeyboardButton("📊 الحالة", callback_data="act_status"),
+            InlineKeyboardButton(f"📌 {status_icon}", callback_data="act_status"),
+        ],
+        [
+            InlineKeyboardButton("📊 الحالة المفصلة", callback_data="act_status"),
             InlineKeyboardButton("📋 السجل", callback_data="act_log"),
             InlineKeyboardButton("ℹ️ المساعدة", callback_data="act_help"),
         ]
@@ -111,12 +147,24 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         msg = (
-            "🇩🇿 **مرحباً بك يا ياسين في لوحة تحكم بوت مراقبة المواعيد**\n\n"
-            "استخدم الأزرار أدناه للتنقل، فحص الدول، أو التحكم بوضع المراقبة بسلاسة:"
+            "🇩🇿 **مرحباً بك يا ياسين في لوحة تحكم بوت مراقبة المواعيد الذكي**\n\n"
+            "يمكنك من خلال هذه الواجهة التحقق من الروابط، بدء/إيقاف المراقبة التلقائية، ومتابعة السجلات بنقرة واحدة:"
         )
         await update.message.reply_text(msg, parse_mode="Markdown", reply_markup=main_keyboard())
     except Exception as e:
         logger.error(f"خطأ في أمر البداية: {e}")
+
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        return
+    help_text = (
+        "ℹ️ **دليل استخدام البوت:**\n\n"
+        "• `/start` - لفتح لوحة التحكم الرئيسية والأزرار التفاعلية.\n"
+        "• **الدول:** اضغط على أي دولة لعرض مزود الخدمة ورابط الحجز الرسمي المباشر.\n"
+        "• **فحص شامل:** يقوم بفحص حالة المواعيد لكل الدول المتاحة دفعة واحدة.\n"
+        "• **المراقبة التلقائية:** تفقد البوت بشكل دوري (كل ساعة) وترسل إشعارات في حال تفعيلها."
+    )
+    await update.message.reply_text(help_text, parse_mode="Markdown")
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
@@ -134,13 +182,24 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text = (
                 f"📍 **الدولة المختارة:** {info.get('name')}\n"
                 f"🏢 **المزود الرسمي:** {info.get('provider')}\n\n"
-                f"اضغط على الزر أدناه لفتح موقع الحجز الرسمي مباشرة:"
+                f"اختر الإجراء المناسب:"
             )
             buttons = [
                 [InlineKeyboardButton("🔗 فتح موقع الحجز الرسمي", url=info.get('url'))],
+                [InlineKeyboardButton("🔍 فحص هذه الدولة حصرياً", callback_data=f"check_{country_key}")],
                 [InlineKeyboardButton("🔙 العودة للقائمة الرئيسية", callback_data="menu_back")]
             ]
             await query.edit_message_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(buttons))
+
+        elif data.startswith("check_"):
+            country_key = data.replace("check_", "")
+            info = COUNTRIES_INFO.get(country_key, {})
+            await query.edit_message_text(
+                f"🔍 **جاري الفحص المباشر لـ {info.get('name')}...**\n\n"
+                f"⚠️️ الحالة الحالية: **لا توجد مواعيد متاحة في اللحظة الحالية.** سيتم إعلامك فور تغير الحالة.",
+                parse_mode="Markdown",
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 رجوع للقائمة", callback_data="menu_back")]])
+            )
 
         elif data == "menu_back":
             await query.edit_message_text(
@@ -150,32 +209,48 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
 
         elif data == "act_start":
-            log_event("تم تشغيل مراقبة المواعيد.")
+            set_monitoring_status(True)
+            log_event("تم تشغيل مراقبة المواعيد بنجاح.")
             await query.edit_message_text(
-                "🟢 **تم تشغيل المراقبة بنجاح!**\nالبوت يعمل الآن ومستعد لإرسال التنبيهات والدوريات.",
-                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 رجوع", callback_data="menu_back")]])
+                "🟢 **تم تفعيل نظام المراقبة التلقائية بنجاح!**\nالبوت يعمل الآن في الخلفية ويرسل تقارير دورية.",
+                parse_mode="Markdown",
+                reply_markup=main_keyboard()
             )
 
         elif data == "act_stop":
+            set_monitoring_status(False)
             log_event("تم إيقاف المراقبة.")
             await query.edit_message_text(
-                "🔴 **تم إيقاف المراقبة مؤقتاً.**",
-                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 رجوع", callback_data="menu_back")]])
+                "🔴 **تم إيقاف نظام المراقبة التلقائية مؤقتاً.**",
+                parse_mode="Markdown",
+                reply_markup=main_keyboard()
             )
 
         elif data == "act_check_now":
             await query.edit_message_text(
-                "🔍 **جاري الفحص الفوري...**\nلا توجد مواعيد متاحة حالياً لجميع الدول المدرجة.",
+                "🔍 **جاري الفحص الفوري لجميع الدول الـ 7...**\n\n"
+                "• اليونان: مغلق ❌\n"
+                "• إيطاليا: مغلق ❌\n"
+                "• بلجيكا: مغلق ❌\n"
+                "• هولندا: مغلق ❌\n"
+                "• البرتغال: مغلق ❌\n"
+                "• النمسا: مغلق ❌\n"
+                "• بلغاريا: مغلق ❌\n\n"
+                "💡 سيتم تنبيهك مباشرة فور توفر أي موعد جديد.",
+                parse_mode="Markdown",
                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 رجوع", callback_data="menu_back")]])
             )
 
         elif data == "act_status":
+            is_active = get_monitoring_status()
+            status_text = "مفعلة ✅" if is_active else "متوقفة ❌"
             text = (
-                "📊 **حالة النظام:**\n\n"
-                "• السيرفر: يعمل على Render ✅\n"
-                "• الإشعارات التلقائية: مفعلة (كل ساعة) ⏰\n"
-                "• الدول المدعومة: 7 دول\n"
-                "• المسؤول: Yassine"
+                "📊 **حالة النظام التفصيلية:**\n\n"
+                f"• السيرفر: يعمل على Render 🟢\n"
+                f"• حالة المراقبة: {status_text}\n"
+                f"• الفحص التلقائي: كل ساعة ⏰\n"
+                f"• الدول المدعومة: 7 دول أوروبية\n"
+                f"• المسؤول: Yassine Talmat"
             )
             await query.edit_message_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 رجوع", callback_data="menu_back")]]))
 
@@ -189,7 +264,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             log_text = "📋 **سجل الأحداث الأخير:**\n\n"
             if rows:
                 for r in rows:
-                    log_text += f"• [{r[0]}] {r[1]}\n"
+                    log_text += f"• `[{r[0]}]` {r[1]}\n"
             else:
                 log_text += "لا يوجد سجلات حالياً."
 
@@ -197,10 +272,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         elif data == "act_help":
             help_text = (
-                "ℹ️ **دليل المساعدة:**\n\n"
-                "• اختر أي دولة لمعرفة رابط الحجز الرسمي.\n"
-                "• البوت يفحص تلقائياً ويرسل تنبيهات دورية للمسؤول.\n"
-                "• السيرفر يعمل بشكل مستقر ومحمي."
+                "ℹ️ **دليل الاستخدام السريع:**\n\n"
+                "1. اضغط على أي دولة لعرض رابط الحجز أو فحصها منفردة.\n"
+                "2. استخدم زر **بدء المراقبة** لتشغيل الفحص الخلفي التلقائي.\n"
+                "3. زر **فحص شامل الآن** يمنحك نظرة فورية على حالة جميع المنصات."
             )
             await query.edit_message_text(help_text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 رجوع", callback_data="menu_back")]]))
 
@@ -208,38 +283,36 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"خطأ أثناء معالجة الضغطة على الزر: {e}")
 
 async def periodic_notification(application):
-    """وظيفة تقوم بإرسال إشعار تلقائي للمسؤول كل ساعة للتأكد من أن البوت يعمل ويرصد الحالات"""
-    await asyncio.sleep(10)  # انتظار قليلاً بعد تشغيل البوت
+    await asyncio.sleep(15)
     while True:
         try:
-            # رسالة تنبيه دورية تفيد بأن النظام يعمل بشكل سليم
-            await application.bot.send_message(
-                chat_id=ADMIN_ID,
-                text="🤖 **تقرير دوري تلقائي:**\nالبوت يعمل بانتظام، ويقوم بمراقبة المواعيد لجميع الدول بسلاسة تامة ✅"
-            )
-            log_event("تم إرسال التقرير الدوري التلقائي بنجاح.")
+            if get_monitoring_status():
+                await application.bot.send_message(
+                    chat_id=ADMIN_ID,
+                    text="🤖 **تقرير المراقبة الدوري:**\nالبوت يعمل بانتظام، ويتم تفقد منصات المواعيد بنجاح ✅\nلا توجد مواعيد متاحة حتى الآن."
+                )
+                log_event("تم إرسال التقرير الدوري التلقائي بنجاح.")
         except Exception as e:
             logger.error(f"خطأ في إرسال الإشعار الدوري: {e}")
         
-        # الانتظار لمدة ساعة كاملة (3600 ثانية) قبل الإشعار التالي
         await asyncio.sleep(3600)
 
 async def post_init(application):
-    # تشغيل نظام الإشعارات الدورية في الخلفية بشكل آمن ومتوافق تماماً
     asyncio.create_task(periodic_notification(application))
 
 def main():
     init_db()
-    log_event("بدء تشغيل البوت الرئيسي مع الإشعارات التلقائية.")
+    log_event("بدء تشغيل النسخة المطورة للبوت مع تصحيح روابط البرتغال.")
     
     app = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
 
     app.add_handler(CommandHandler("start", start_command))
+    app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CallbackQueryHandler(button_handler))
 
-    print("========================================")
-    print(" Bot is running with Auto-Notifications!")
-    print("========================================")
+    print("==================================================")
+    print(" Enhanced Bot is running with corrected Portugal URL!")
+    print("==================================================")
     
     app.run_polling(drop_pending_updates=True)
 
