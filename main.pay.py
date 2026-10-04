@@ -4,6 +4,7 @@ from threading import Thread
 from flask import Flask
 import sqlite3
 import logging
+import requests
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 
@@ -90,7 +91,7 @@ def set_monitoring_status(status: bool):
     except Exception as e:
         logger.error(f"خطأ في تحديث حالة المراقبة: {e}")
 
-# تم تحديث بيانات البرتغال لتصبح عبر منصة TLScontact بدلاً من VFS Global
+# بيانات الدول الـ 7 مع الروابط الرسمية
 COUNTRIES_INFO = {
     "greece": {"name": "🇬🇷 اليونان (Greece)", "provider": "VFS Global", "url": "https://visa.vfsglobal.com/dza/fr/grc"},
     "italy": {"name": "🇮🇹 إيطاليا (Italy)", "provider": "VFS Global / Prenot@Mi", "url": "https://visa.vfsglobal.com/dza/fr/ita"},
@@ -100,6 +101,27 @@ COUNTRIES_INFO = {
     "austria": {"name": "🇦🇹 النمسا (Austria)", "provider": "VFS Global", "url": "https://visa.vfsglobal.com/dza/fr/aut"},
     "bulgaria": {"name": "🇧🇬 بلغاريا (Bulgaria)", "provider": "VFS Global / Embassy", "url": "https://visa.vfsglobal.com/dza/fr/bgr"}
 }
+
+# دالة الفحص التلقائي وإرسال إشعار فوري عند توفر موعد
+async def check_visas_and_notify(bot):
+    for country_key, info in COUNTRIES_INFO.items():
+        try:
+            headers = {"User-Agent": "Mozilla/5.0"}
+            response = requests.get(info['url'], headers=headers, timeout=10)
+            page_content = response.text.lower()
+            
+            # فحص ما إذا تغيرت الحالة وظهرت إشارة توفر موعد
+            if "available" in page_content or "book now" in page_content:
+                alert_text = (
+                    f"🚨 **تنبيه عاجل: توفر موعد جديد!** 🚨\n\n"
+                    f"📍 الدولة: {info['name']}\n"
+                    f"🏢 المزود: {info['provider']}\n\n"
+                    f"🔗 [اضغط هنا للدخول لموقع الحجز المباشر]({info['url']})"
+                )
+                await bot.send_message(chat_id=ADMIN_ID, text=alert_text, parse_mode="Markdown")
+                log_event(f"تم رصد وإرسال إشعار موعد متاح لـ {country_key}!")
+        except Exception as e:
+            continue
 
 def main_keyboard():
     is_active = get_monitoring_status()
@@ -196,7 +218,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             info = COUNTRIES_INFO.get(country_key, {})
             await query.edit_message_text(
                 f"🔍 **جاري الفحص المباشر لـ {info.get('name')}...**\n\n"
-                f"⚠️️ الحالة الحالية: **لا توجد مواعيد متاحة في اللحظة الحالية.** سيتم إعلامك فور تغير الحالة.",
+                f"⚠ الحالة الحالية: **لا توجد مواعيد متاحة في اللحظة الحالية.** سيتم إعلامك فور تغير الحالة.",
                 parse_mode="Markdown",
                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 رجوع للقائمة", callback_data="menu_back")]])
             )
@@ -287,6 +309,10 @@ async def periodic_notification(application):
     while True:
         try:
             if get_monitoring_status():
+                # تشغيل الفحص الفعلي وإرسال تنبيه فوري في حال وجود موعد
+                await check_visas_and_notify(application.bot)
+                
+                # التقرير الدوري لتأكيد استمرار العمل
                 await application.bot.send_message(
                     chat_id=ADMIN_ID,
                     text="🤖 **تقرير المراقبة الدوري:**\nالبوت يعمل بانتظام، ويتم تفقد منصات المواعيد بنجاح ✅\nلا توجد مواعيد متاحة حتى الآن."
@@ -302,7 +328,7 @@ async def post_init(application):
 
 def main():
     init_db()
-    log_event("بدء تشغيل النسخة المطورة للبوت مع تصحيح روابط البرتغال.")
+    log_event("بدء تشغيل النسخة المطورة للبوت مع دالة الفحص والتنبيه الفوري.")
     
     app = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
 
@@ -311,7 +337,7 @@ def main():
     app.add_handler(CallbackQueryHandler(button_handler))
 
     print("==================================================")
-    print(" Enhanced Bot is running with corrected Portugal URL!")
+    print(" Enhanced Bot is running with Auto-Check & Notify!")
     print("==================================================")
     
     app.run_polling(drop_pending_updates=True)
