@@ -7,16 +7,24 @@ app = Flask('')
 
 @app.route('/')
 def home():
-  return 'Bot is running!'
+  return 'Bot is alive!'
 
 
 def run():
+  # يأخذ البوابة التي يطلبها Render تلقائياً
   port = int(os.environ.get('PORT', 8080))
   app.run(host='0.0.0.0', port=port)
 
 
+def keep_alive():
+  t = Thread(target=run)
+  t.daemon = True
+  t.start()
+
+
+keep_alive()
+
 # تشغيل سيرفر الويب الوهمي في الخلفية
-Thread(target=run).start()
 import sqlite3
 import logging
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
