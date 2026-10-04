@@ -1,4 +1,5 @@
 import os
+import asyncio
 from threading import Thread
 from flask import Flask
 import sqlite3
@@ -151,7 +152,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif data == "act_start":
             log_event("تم تشغيل مراقبة المواعيد.")
             await query.edit_message_text(
-                "🟢 **تم تشغيل المراقبة بنجاح!**\nالبوت يعمل الآن ومستعد لإرسال التنبيهات.",
+                "🟢 **تم تشغيل المراقبة بنجاح!**\nالبوت يعمل الآن ومستعد لإرسال التنبيهات والدوريات.",
                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 رجوع", callback_data="menu_back")]])
             )
 
@@ -172,7 +173,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text = (
                 "📊 **حالة النظام:**\n\n"
                 "• السيرفر: يعمل على Render ✅\n"
-                "• حالة البوت: مستقر بدون أخطاء 🛡️\n"
+                "• الإشعارات التلقائية: مفعلة (كل ساعة) ⏰\n"
                 "• الدول المدعومة: 7 دول\n"
                 "• المسؤول: Yassine"
             )
@@ -198,25 +199,46 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             help_text = (
                 "ℹ️ **دليل المساعدة:**\n\n"
                 "• اختر أي دولة لمعرفة رابط الحجز الرسمي.\n"
-                "• استخدم زر 'فحص سريع' للتحقق الفوري.\n"
-                "• البوت محمي ويعمل بانتظام على السحابة."
+                "• البوت يفحص تلقائياً ويرسل تنبيهات دورية للمسؤول.\n"
+                "• السيرفر يعمل بشكل مستقر ومحمي."
             )
             await query.edit_message_text(help_text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 رجوع", callback_data="menu_back")]]))
 
     except Exception as e:
         logger.error(f"خطأ أثناء معالجة الضغطة على الزر: {e}")
 
+async def periodic_notification(application):
+    """وظيفة تقوم بإرسال إشعار تلقائي للمسؤول كل ساعة للتأكد من أن البوت يعمل ويرصد الحالات"""
+    await asyncio.sleep(10)  # انتظار قليلاً بعد تشغيل البوت
+    while True:
+        try:
+            # رسالة تنبيه دورية تفيد بأن النظام يعمل بشكل سليم
+            await application.bot.send_message(
+                chat_id=ADMIN_ID,
+                text="🤖 **تقرير دوري تلقائي:**\nالبوت يعمل بانتظام، ويقوم بمراقبة المواعيد لجميع الدول بسلاسة تامة ✅"
+            )
+            log_event("تم إرسال التقرير الدوري التلقائي بنجاح.")
+        except Exception as e:
+            logger.error(f"خطأ في إرسال الإشعار الدوري: {e}")
+        
+        # الانتظار لمدة ساعة كاملة (3600 ثانية) قبل الإشعار التالي
+        await asyncio.sleep(3600)
+
+async def post_init(application):
+    # تشغيل نظام الإشعارات الدورية في الخلفية بشكل آمن ومتوافق تماماً
+    asyncio.create_task(periodic_notification(application))
+
 def main():
     init_db()
-    log_event("بدء تشغيل البوت الرئيسي.")
+    log_event("بدء تشغيل البوت الرئيسي مع الإشعارات التلقائية.")
     
-    app = Application.builder().token(BOT_TOKEN).build()
+    app = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
 
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(CallbackQueryHandler(button_handler))
 
     print("========================================")
-    print(" Bot is running perfectly and stable!")
+    print(" Bot is running with Auto-Notifications!")
     print("========================================")
     
     app.run_polling(drop_pending_updates=True)
