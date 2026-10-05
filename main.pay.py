@@ -25,7 +25,7 @@ def keep_alive():
 
 keep_alive()
 
-BOT_TOKEN = "8818674380:AAEqZfbOg4Js-YcBoklzXETX0Hucx0xM1zg"
+BOT_TOKEN = "8818674380:AAEqZfbOg4Js-YcBoKlXETX0Hucx0xM1zg"
 ADMIN_ID = 8876916730
 
 logging.basicConfig(
@@ -110,7 +110,6 @@ async def check_visas_and_notify(bot):
             response = requests.get(info['url'], headers=headers, timeout=10)
             page_content = response.text.lower()
             
-            # فحص ما إذا تغيرت الحالة وظهرت إشارة توفر موعد
             if "available" in page_content or "book now" in page_content:
                 alert_text = (
                     f"🚨 **تنبيه عاجل: توفر موعد جديد!** 🚨\n\n"
@@ -309,10 +308,8 @@ async def periodic_notification(application):
     while True:
         try:
             if get_monitoring_status():
-                # تشغيل الفحص الفعلي وإرسال تنبيه فوري في حال وجود موعد
                 await check_visas_and_notify(application.bot)
                 
-                # التقرير الدوري لتأكيد استمرار العمل
                 await application.bot.send_message(
                     chat_id=ADMIN_ID,
                     text="🤖 **تقرير المراقبة الدوري:**\nالبوت يعمل بانتظام، ويتم تفقد منصات المواعيد بنجاح ✅\nلا توجد مواعيد متاحة حتى الآن."
@@ -326,18 +323,26 @@ async def periodic_notification(application):
 async def post_init(application):
     asyncio.create_task(periodic_notification(application))
 
+# معالج الأخطاء المطل رسميًا لمنع خطأ No error handlers are registered
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    logger.error(msg="حدث استثناء أثناء معالجة التحديث:", exc_info=context.error)
+
 def main():
     init_db()
-    log_event("بدء تشغيل النسخة المطورة للبوت مع دالة الفحص والتنبيه الفوري.")
+    log_event("بدء تشغيل النسخة المستقرة مع معالج الأخطاء.")
     
     app = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
 
+    # تسجيل الأوامر والرسائل
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CallbackQueryHandler(button_handler))
 
+    # تسجيل معالج الأخطاء لحل مشكلة السجلات نهائياً
+    app.add_error_handler(error_handler)
+
     print("==================================================")
-    print(" Enhanced Bot is running with Auto-Check & Notify!")
+    print(" Bot is running stably with Error Handler registered!")
     print("==================================================")
     
     app.run_polling(drop_pending_updates=True)
