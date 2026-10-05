@@ -91,7 +91,6 @@ def set_monitoring_status(status: bool):
     except Exception as e:
         logger.error(f"خطأ في تحديث حالة المراقبة: {e}")
 
-# بيانات الدول الـ 7 مع الروابط الرسمية
 COUNTRIES_INFO = {
     "greece": {"name": "🇬🇷 اليونان (Greece)", "provider": "VFS Global", "url": "https://visa.vfsglobal.com/dza/fr/grc"},
     "italy": {"name": "🇮🇹 إيطاليا (Italy)", "provider": "VFS Global / Prenot@Mi", "url": "https://visa.vfsglobal.com/dza/fr/ita"},
@@ -102,7 +101,6 @@ COUNTRIES_INFO = {
     "bulgaria": {"name": "🇧🇬 بلغاريا (Bulgaria)", "provider": "VFS Global / Embassy", "url": "https://visa.vfsglobal.com/dza/fr/bgr"}
 }
 
-# دالة الفحص التلقائي وإرسال إشعار فوري عند توفر موعد
 async def check_visas_and_notify(bot):
     for country_key, info in COUNTRIES_INFO.items():
         try:
@@ -183,7 +181,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• `/start` - لفتح لوحة التحكم الرئيسية والأزرار التفاعلية.\n"
         "• **الدول:** اضغط على أي دولة لعرض مزود الخدمة ورابط الحجز الرسمي المباشر.\n"
         "• **فحص شامل:** يقوم بفحص حالة المواعيد لكل الدول المتاحة دفعة واحدة.\n"
-        "• **المراقبة التلقائية:** تفقد البوت بشكل دوري (كل ساعة) وترسل إشعارات في حال تفعيلها."
+        "• **المراقبة التلقائية:** تفقد البوت بشكل دوري وترسل إشعارات في حال تفعيلها."
     )
     await update.message.reply_text(help_text, parse_mode="Markdown")
 
@@ -233,7 +231,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             set_monitoring_status(True)
             log_event("تم تشغيل مراقبة المواعيد بنجاح.")
             await query.edit_message_text(
-                "🟢 **تم تفعيل نظام المراقبة التلقائية بنجاح!**\nالبوت يعمل الآن في الخلفية ويرسل تقارير دورية.",
+                "🟢 **تم تفعيل نظام المراقبة التلقائية بنجاح!**\nالبوت يعمل الآن في الخلفية ويرسل لك إشعارات فورية.",
                 parse_mode="Markdown",
                 reply_markup=main_keyboard()
             )
@@ -269,8 +267,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "📊 **حالة النظام التفصيلية:**\n\n"
                 f"• السيرفر: يعمل على Render 🟢\n"
                 f"• حالة المراقبة: {status_text}\n"
-                f"• الفحص التلقائي: كل ساعة ⏰\n"
-                f"• الدول المدعومة: 7 دول أوروبية\n"
                 f"• المسؤول: Yassine Talmat"
             )
             await query.edit_message_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 رجوع", callback_data="menu_back")]]))
@@ -295,8 +291,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             help_text = (
                 "ℹ️ **دليل الاستخدام السريع:**\n\n"
                 "1. اضغط على أي دولة لعرض رابط الحجز أو فحصها منفردة.\n"
-                "2. استخدم زر **بدء المراقبة** لتشغيل الفحص الخلفي التلقائي.\n"
-                "3. زر **فحص شامل الآن** يمنحك نظرة فورية على حالة جميع المنصات."
+                "2. استخدم زر **بدء المراقبة** لتشغيل الفحص التلقائي."
             )
             await query.edit_message_text(help_text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 رجوع", callback_data="menu_back")]]))
 
@@ -309,40 +304,30 @@ async def periodic_notification(application):
         try:
             if get_monitoring_status():
                 await check_visas_and_notify(application.bot)
-                
-                await application.bot.send_message(
-                    chat_id=ADMIN_ID,
-                    text="🤖 **تقرير المراقبة الدوري:**\nالبوت يعمل بانتظام، ويتم تفقد منصات المواعيد بنجاح ✅\nلا توجد مواعيد متاحة حتى الآن."
-                )
-                log_event("تم إرسال التقرير الدوري التلقائي بنجاح.")
         except Exception as e:
-            logger.error(f"خطأ في إرسال الإشعار الدوري: {e}")
+            logger.error(f"خطأ في إشعار المراقبة: {e}")
         
         await asyncio.sleep(3600)
 
 async def post_init(application):
     asyncio.create_task(periodic_notification(application))
 
-# معالج الأخطاء المطل رسميًا لمنع خطأ No error handlers are registered
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
     logger.error(msg="حدث استثناء أثناء معالجة التحديث:", exc_info=context.error)
 
 def main():
     init_db()
-    log_event("بدء تشغيل النسخة المستقرة مع معالج الأخطاء.")
+    log_event("بدء تشغيل البوت بنجاح.")
     
     app = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
 
-    # تسجيل الأوامر والرسائل
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CallbackQueryHandler(button_handler))
-
-    # تسجيل معالج الأخطاء لحل مشكلة السجلات نهائياً
     app.add_error_handler(error_handler)
 
     print("==================================================")
-    print(" Bot is running stably with Error Handler registered!")
+    print(" Bot is running stably with Correct Token!")
     print("==================================================")
     
     app.run_polling(drop_pending_updates=True)
